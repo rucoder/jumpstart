@@ -28,6 +28,9 @@ all: run
 ovmf: $(OVMF_FILES)
 $(OVMF_FILES): Dockerfile
 	docker buildx build  -o type=local,dest=$(OVMF_DIR) .
+    # files created by the docker build may be very old
+    # so we need to touch them to update the timestamp
+	touch $(OVMF_FILES)
 
 .PHONY: vm-dir
 vm-dir: $(BOOT_FILES)
@@ -48,15 +51,15 @@ jumpstart_$(TARGET): $(BOOTLOADER)
 jumpstart_debug: CARGO_TARGET:=
 jumpstart_release: CARGO_TARGET:=--release
 
-$(BOOTLOADER):
+$(BOOTLOADER): src/*.rs
 	cargo build --target=x86_64-unknown-uefi $(CARGO_TARGET)
 
 .PHONY: run
 run: vm-dir
 	qemu-system-x86_64 -enable-kvm -serial stdio \
 	-debugcon file:debug.log -global isa-debugcon.iobase=0x402 \
-    -drive if=pflash,format=raw,readonly=on,file=./$(OVMF_DIR)/OVMF_CODE_no_nvme.fd \
-    -drive if=pflash,format=raw,readonly=on,file=./$(OVMF_DIR)/OVMF_VARS_no_nvme.fd \
+    -drive if=pflash,format=raw,unit=0,file=./$(OVMF_DIR)/OVMF_CODE_no_nvme.fd,readonly=on \
+    -drive if=pflash,format=raw,unit=1,file=./$(OVMF_DIR)/OVMF_VARS_no_nvme.fd \
 	-drive format=raw,file=fat:rw:$(NVME_DIR),if=none,id=nvm \
 	-device nvme,serial=deadbeef,drive=nvm \
     -drive format=raw,file=fat:rw:$(ESP_DIR)
