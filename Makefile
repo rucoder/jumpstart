@@ -1,4 +1,5 @@
-TARGET ?= release
+CARGO_DEBUG_TARGET ?= release
+CARGO_ARCH_TARGET = x86_64-unknown-uefi
 
 OUT_ROOT_DIR=./images
 
@@ -19,9 +20,9 @@ NVME_DIR = $(OUT_ROOT_DIR)/nvme
 BOOT_FILES = \
 	$(ESP_DIR)/EFI/BOOT/BOOTX64.efi \
 	$(ESP_DIR)/EFI/BOOT/JS/DRIVERS/NvmExpressDxe.efi \
-	$(if $(filter debug,$(TARGET)),$(ESP_DIR)/EFI/BOOT/shellx64.efi)
+	$(if $(filter debug,$(CARGO_DEBUG_TARGET)),$(ESP_DIR)/EFI/BOOT/shellx64.efi)
 
-BOOTLOADER = ./target/x86_64-unknown-uefi/$(TARGET)/jumpstart.efi
+BOOTLOADER = ./target/$(CARGO_ARCH_TARGET)/$(CARGO_DEBUG_TARGET)/jumpstart.efi
 
 .PHONY: all
 all: run-iso
@@ -40,7 +41,12 @@ $(BOOT_FILES): $(BOOTLOADER) $(OVMF_FILES)
 	mkdir -p $(NVME_DIR)
 	# touch $(NVME_DIR)/nvme-dummy.efi
 	cp $(OVMF_DIR)/NvmExpressDxe.efi $(ESP_DIR)/EFI/BOOT/JS/DRIVERS
+# if we are building for i686-unknown-uefi copy to BOOTAI32.efi
+ifeq ($(CARGO_ARCH_TARGET),i686-unknown-uefi)
+	cp $(BOOTLOADER) $(ESP_DIR)/EFI/BOOT/BOOTIA32.efi
+else
 	cp $(BOOTLOADER) $(ESP_DIR)/EFI/BOOT/BOOTX64.efi
+endif
 # copy UEFI Shell to the ESP only for debug target
 ifeq ($(TARGET),debug)
 	cp $(OVMF_DIR)/shellx64.efi $(ESP_DIR)/EFI/BOOT
@@ -95,7 +101,7 @@ $(EFI_BOOT_IMG): $(BOOT_FILES)
 
 	mcopy -i $@ $(ESP_DIR)/EFI/BOOT/BOOTX64.efi ::EFI/BOOT/BOOTX64.EFI
 	mcopy -i $@ $(ESP_DIR)/EFI/BOOT/JS/DRIVERS/NvmExpressDxe.efi ::EFI/BOOT/JS/DRIVERS/NvmExpressDxe.efi
-ifeq ($(TARGET),debug)
+ifeq ($(CARGO_DEBUG_TARGET),debug)
 	mcopy -i $@ $(ESP_DIR)/EFI/BOOT/shellx64.efi ::EFI/BOOT/SHELLX64.EFI
 endif
 
@@ -103,7 +109,7 @@ RUST_SRC_FILES := $(shell find ./src -type f -name '*.rs')
 RUST_SRC_FILES += Cargo.toml Cargo.lock rust-toolchain.toml
 
 $(BOOTLOADER): $(RUST_SRC_FILES)
-	cargo build --target=x86_64-unknown-uefi $(if $(filter release,$(TARGET)),--release)
+	cargo build --target=$(CARGO_ARCH_TARGET) $(if $(filter release,$(CARGO_DEBUG_TARGET)),--release)
 
 $(OUT_ROOT_DIR)/nvme-1.img:
 	dd if=/dev/zero of=$@ bs=1M count=1024
